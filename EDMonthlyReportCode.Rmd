@@ -1,0 +1,82 @@
+---
+title: "Monthly ED Report"
+author: "Allison Brenner"
+date: "3/24/2021"
+output: 
+  html_document:
+  theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+
+```{r}
+## Load libraries
+#install.packages("janitor")
+
+library(janitor)
+library(tidyverse)
+library(usethis)
+library(yaml)
+
+```
+
+```{r}
+## Import Collective Medical Data from 2020
+
+ED.2020 <- read_csv("ED_visits_2020.csv") %>% 
+    clean_names(.,"upper_camel")
+
+```
+
+
+```{r}
+## Connect to git
+use_git()
+
+# Connect to GitHub repository
+use_github(organisation = "rin3-spring-2021",private = TRUE)
+
+```
+
+
+
+### SOME STATS ON PAST 30 DAY ED ENCOUNTERS
+
+#### First, total past month encounters
+
+```{r}
+ED.2020 %>% 
+  summarise(EDVisitTotal = n()) %>% 
+  select(EDVisitTotal)
+  #group_by(VisitFacility) %>% 
+  #summarise(EDVisitTotal_PerClient = n())
+```
+#### Examine encounters by visit facility
+
+```{r}
+ED.2020 %>% 
+  count(VisitFacility) %>% 
+  arrange(desc(n))
+```
+
+
+
+<center>
+## **CCBHC-E ED Cascadia Report**
+### **February, 2021**
+
+***
+<style>
+div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
+</style>
+<div class = "blue">
+
+<center>
+Data from Collective Medical were combined with Cascadia EHR data to determine information on emergency department (ED) utilization in February, 2021. Information presented includes Cascadia clients with an ROI for Collective Medical, who utilized the ED at least once from Feb 1-Feb 28, 2021.  
+</div>
+
+

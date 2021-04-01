@@ -8,23 +8,19 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = FALSE, include = TRUE )
 ```
 
 
 
-```{r}
-## Load libraries
-#install.packages("janitor")
-
+```{r, include=FALSE}
 library(janitor)
 library(tidyverse)
 library(usethis)
 library(yaml)
-
 ```
 
-```{r}
+```{r, include=FALSE}
 ## Import Collective Medical Data from 2020
 
 ED.2020 <- read_csv("ED_visits_2020.csv") %>% 
@@ -33,7 +29,7 @@ ED.2020 <- read_csv("ED_visits_2020.csv") %>%
 ```
 
 
-```{r}
+```{r, include=FALSE}
 ## Connect to git
 use_git()
 
@@ -42,28 +38,12 @@ use_github(organisation = "rin3-spring-2021",private = TRUE)
 
 ```
 
-
-
-### SOME STATS ON PAST 30 DAY ED ENCOUNTERS
-
-#### First, total past month encounters
-
-```{r}
-ED.2020 %>% 
-  summarise(EDVisitTotal = n()) %>% 
-  select(EDVisitTotal)
-  #group_by(VisitFacility) %>% 
-  #summarise(EDVisitTotal_PerClient = n())
+```{r,include=FALSE}
+# Drop identifiers
+ED.2020.HIPPA <- 
+  ED.2020 %>% 
+  select(-FirstName, -LastName, -DateOfBirth)
 ```
-#### Examine encounters by visit facility
-
-```{r}
-ED.2020 %>% 
-  count(VisitFacility) %>% 
-  arrange(desc(n))
-```
-
-
 
 <center>
 ## **CCBHC-E ED Cascadia Report**
@@ -78,5 +58,28 @@ div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
 <center>
 Data from Collective Medical were combined with Cascadia EHR data to determine information on emergency department (ED) utilization in February, 2021. Information presented includes Cascadia clients with an ROI for Collective Medical, who utilized the ED at least once from Feb 1-Feb 28, 2021.  
 </div>
+
+
+
+### SOME STATS ON PAST 30 DAY ED ENCOUNTERS
+
+#### First, total past month encounters
+
+```{r}
+ED.2020.HIPPA %>% 
+  summarise(EDVisitTotal = n()) %>% 
+  select(EDVisitTotal)
+  #group_by(VisitFacility) %>% 
+  #summarise(EDVisitTotal_PerClient = n())
+```
+#### Examine encounters by visit facility
+
+```{r}
+ED.2020.HIPPA %>% 
+  count(VisitFacility) %>% 
+  arrange(desc(n))
+```
+
+
 
 

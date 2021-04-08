@@ -1,5 +1,5 @@
 ---
-title: "Monthly ED Report"
+title: "CBHC Monthly ED Report"
 author: "Allison Brenner"
 date: "3/24/2021"
 output: 
@@ -22,27 +22,18 @@ library(yaml)
 
 ```{r, include=FALSE}
 ## Import Collective Medical Data from 2020
-
-ED.2020 <- read_csv("ED_visits_2020.csv") %>% 
-    clean_names(.,"upper_camel")
-
+setwd("~/R/ED Enhancement/raw_data")
+ed_2020 <- read_csv("ED_visits_2020.csv") %>% 
+    clean_names()
 ```
 
 
-```{r, include=FALSE}
-## Connect to git
-use_git()
-
-# Connect to GitHub repository
-use_github(organisation = "rin3-spring-2021",private = TRUE)
-
-```
 
 ```{r,include=FALSE}
 # Drop identifiers
-ED.2020.HIPPA <- 
-  ED.2020 %>% 
-  select(-FirstName, -LastName, -DateOfBirth)
+ed_2020.hippa <- 
+  ed_2020 %>% 
+  select(-first_name, -last_name, -date_of_birth)
 ```
 
 <center>
@@ -66,20 +57,62 @@ Data from Collective Medical were combined with Cascadia EHR data to determine i
 #### First, total past month encounters
 
 ```{r}
-ED.2020.HIPPA %>% 
-  summarise(EDVisitTotal = n()) %>% 
-  select(EDVisitTotal)
-  #group_by(VisitFacility) %>% 
-  #summarise(EDVisitTotal_PerClient = n())
+ed_2020.hippa %>% 
+  summarise(ed_visit_total = n()) %>% 
+  select(ed_visit_total)
+  
 ```
+#### Examine encounters by client
+
+```{r}
+ed_2020.hippa %>% 
+  group_by(member_id) %>% 
+  summarise(ed_visit_total = n()) %>% 
+  summarise(mean_ed_visits_per_client = mean(ed_visit_total))
+```
+
 #### Examine encounters by visit facility
 
 ```{r}
-ED.2020.HIPPA %>% 
-  count(VisitFacility) %>% 
+ed_2020.hippa %>% 
+  count(visit_facility) %>% 
   arrange(desc(n))
 ```
 
 
+#### Figure 1 displays the total number of ED visits by month in 2020
 
+
+```{r}
+ed_visits_by_month <- ed_2020_long_2 %>% 
+  mutate(month=as.numeric(month)) %>% 
+arrange(month) %>% 
+group_by(month) %>% 
+  add_count(visit)
+```
+
+```{r}
+ggplot(data=ed_visits_by_month,
+        mapping=aes(x=month, y=n)) +
+  scale_x_discrete(limits=c("1","2", "3","4","5","6","7","8","9","10","11","12")) +
+  scale_y_continuous("ED Visits",limits=c(0,900))+
+  geom_col()
+```
+
+
+
+#### Figure 2 displays the average number of ED visits per month in 2020
+
+```{r}
+ggplot(data=ed_visits_by_month,
+        mapping=aes(x=month, y=n, group=oregon_ed_disparity_measure)) +
+  scale_x_discrete(limits=c("1","2", "3","4","5","6","7","8","9","10","11","12"))
+  geom_col()
+```
+
+```{r}
+ggplot(data=ed_visits_by_month_group,
+        mapping=aes(x=month, y=n, group_by(past_year_))) +
+  geom_col()
+```
 

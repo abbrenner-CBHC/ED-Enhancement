@@ -4,6 +4,15 @@ library(lubridate)
 library(yaml)
 library(dplyr)
 
+## Import raw data from CM for 2020 ED visits
+ed_2020 <- read_csv("raw_data/ED_visits_2020.csv") %>% 
+  clean_names()
+
+## Drop identifying information
+ed_2020.hippa <- 
+  ed_2020 %>% 
+  select(-first_name, -last_name, -date_of_birth)
+
 
 
 ed_2020_long <- ed_2020.hippa %>% 

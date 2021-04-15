@@ -5,6 +5,8 @@ date: "3/24/2021"
 output: 
   html_document:
   theme: flatly
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -18,12 +20,13 @@ library(janitor)
 library(tidyverse)
 library(usethis)
 library(yaml)
+library(lubridate)
+library(hrbrthemes)
 ```
 
 ```{r, include=FALSE}
 ## Import Collective Medical Data from 2020
-setwd("~/R/ED Enhancement/raw_data")
-ed_2020 <- read_csv("ED_visits_2020.csv") %>% 
+ed_2020 <- read_csv("raw_data/ED_visits_2020.csv") %>% 
     clean_names()
 ```
 
@@ -31,7 +34,7 @@ ed_2020 <- read_csv("ED_visits_2020.csv") %>%
 
 ```{r,include=FALSE}
 # Drop identifiers
-ed_2020.hippa <- 
+ed_2020_hippa <- 
   ed_2020 %>% 
   select(-first_name, -last_name, -date_of_birth)
 ```
@@ -54,65 +57,81 @@ Data from Collective Medical were combined with Cascadia EHR data to determine i
 
 ### SOME STATS ON PAST 30 DAY ED ENCOUNTERS
 
-#### First, total past month encounters
+#### First, compute and display total past month encounters for CBH
+### ...in the variable "ed_visit_total"
 
 ```{r}
-ed_2020.hippa %>% 
+ed_visit_total <- ed_2020_hippa %>% 
   summarise(ed_visit_total = n()) %>% 
-  select(ed_visit_total)
-  
+  pull(ed_visit_total)
 ```
+There were `r ed_visit_total` total ED visits for CBH clients in 2020.
+
 #### Examine encounters by client
 
 ```{r}
-ed_2020.hippa %>% 
+ed_2020_hippa %>% 
   group_by(member_id) %>% 
   summarise(ed_visit_total = n()) %>% 
-  summarise(mean_ed_visits_per_client = mean(ed_visit_total))
+  summarise(mean_ed_visits_per_client = mean(ed_visit_total)) %>% 
+  pull(mean_ed_visits_per_client)
 ```
+On average, clients visited the ED `r mean_ed_visits_per_client` times in 2020.
 
 #### Examine encounters by visit facility
 
 ```{r}
-ed_2020.hippa %>% 
+ed_2020_hippa %>% 
   count(visit_facility) %>% 
   arrange(desc(n))
 ```
 
 
+
 #### Figure 1 displays the total number of ED visits by month in 2020
 
 
+
 ```{r}
-ed_visits_by_month <- ed_2020_long_2 %>% 
-  mutate(month=as.numeric(month)) %>% 
-arrange(month) %>% 
-group_by(month) %>% 
-  add_count(visit)
+# First, create a month and year variable using lubridate package
+ed_visits_by_month <- ed_2020_hippa %>% 
+  select(admit_date) %>% 
+  mutate(admit_date = mdy_hm(admit_date)) %>% 
+  mutate(month = month(admit_date, label = TRUE, abbr = TRUE)) %>% 
+  mutate(year = year(admit_date)) %>% 
+  select(-admit_date) %>% 
+  add_count(year, month)
 ```
 
 ```{r}
 ggplot(data=ed_visits_by_month,
         mapping=aes(x=month, y=n)) +
-  scale_x_discrete(limits=c("1","2", "3","4","5","6","7","8","9","10","11","12")) +
-  scale_y_continuous("ED Visits",limits=c(0,900))+
+  scale_x_discrete() +
+  scale_y_continuous("ED Visits",limits=c(0,900),
+                     breaks = seq(0,900, by=100))+
   geom_col()
 ```
 
-
-
-#### Figure 2 displays the average number of ED visits per month in 2020
-
 ```{r}
+# This code improves the quality of the column graph above
 ggplot(data=ed_visits_by_month,
-        mapping=aes(x=month, y=n, group=oregon_ed_disparity_measure)) +
-  scale_x_discrete(limits=c("1","2", "3","4","5","6","7","8","9","10","11","12"))
-  geom_col()
+        mapping=aes(x=month, y=n, fill=year)) +
+  scale_x_discrete() +
+  scale_y_continuous(limits=c(0,900),
+                     breaks = seq(0,900, by=100))+
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~year) + 
+  geom_text(aes(label= n),
+            vjust=-1)+
+  labs(title="Total Emergency Department Encounters, 2020 to Date",
+       subtitle = "CBH Clients",
+       x="Month",
+       y="ED Visit Count") +
+  theme_ipsum_es()
 ```
 
-```{r}
-ggplot(data=ed_visits_by_month_group,
-        mapping=aes(x=month, y=n, group_by(past_year_))) +
-  geom_col()
-```
+
+
+
+
 

@@ -23,6 +23,12 @@ ed_cbhc_tyd <- read_xlsx("raw_data/credible_for_ed_ytd_04_28_2020.xlsx",
 # Basic data cleaning, emergency department encounters, YTD -----------------------------------------------------
 
 
+ed_encounter %>% 
+  select(bh_and_diabetes, oregon_ed_disparity_measure) %>% 
+  mutate(bh_cohort = case_when(bh_and_diabetes == "BH and Diabetes" ~ TRUE,
+                               TRUE ~ FALSE))
+
+
 ed_encounter_clean <- ed_encounter %>% 
   select(-c(first_name, last_name, date_of_birth, discharge_date)) %>% 
   rename(id=member_id, past_month_visit_count=x1_month_ed_visit_count,
@@ -35,6 +41,8 @@ ed_encounter_clean <- ed_encounter %>%
   select(-c(oregon_ed_disparity_measure,bh_and_diabetes))
   
   
+
+
   # Note: I am having trouble changing the bh_cohort and ed_disparity_cohort variable to numeric type
 
 
@@ -68,8 +76,12 @@ ed_encounter_dates<- ed_encounter_clean %>%
 
 # Create count of ED admits for each person
 ed_encounter_dates %>% 
+  select(id, day_admit) %>% 
   group_by(id) %>% 
-  mutate(day_admit_count = (add_count(day_admit)))
+  add_count(day_admit, name = "total_per_client")
+  
+
+
 
 # Create high utilization categories
 ed_encounter_dates <- ed_encounter_dates %>% 
@@ -83,7 +95,7 @@ ed_encounter_dates <- ed_encounter_dates %>%
 # Create more meaningful Dx variables
 
 ed_encounter_dates <- ed_encounter_dates %>% 
-  separate_rows(diagnoses, sep=";") %>% 
+  separate_rows(diagnoses, sep=";")
   
 
   

@@ -22,6 +22,7 @@ library(usethis)
 library(yaml)
 library(lubridate)
 library(hrbrthemes)
+library(readxl)
 ```
 
 ```{r, include=FALSE}

@@ -106,24 +106,21 @@ ed_person_summary_data >- ed_encounter_clean %>%
 
 prescott_dx <- prescott_march_wide %>% 
   select(member_id,primary_dx_desc, past_12_mo_5_9, past_12_mo_10_plus, past_month_ed_2_plus, bh_dm) %>%
-  filter(primary_dx_desc=="Reaction to severe stress, and adjustment disorders"|primary_dx_desc=="Schizoaffective disorders"|primary_dx_desc=="Unspecified psychosis not due to a substance or known physiological condition
-"|primary_dx_desc=="Recurrent depressive disorder"|primary_dx_desc=="Schizophrenia"|primary_dx_desc=="Bipolar affective disorder") 
+  filter(primary_dx_desc %in% c("Reaction to severe stress, and adjustment disorders","Schizoaffective disorders","Unspecified psychosis not due to a substance or known physiological condition
+","Recurrent depressive disorder","Schizophrenia","Bipolar affective disorder") )
 
 
-# I am trying to graph a count of clients by each of the three ed utilization groups (2+ times in past month,
-# 5-9 times in past year, 10+ times in past year, those with behavioral health Dx and diabetes)
-# I thought if I used pivot_longer to create a ed type variable, and then used facet wrap to show the count by diagnosis for each
-# utilization category, it might give me a nice way to compare. But it's not working and I'm not sure where to
-# go from here
 
-
-prescott_dx_long <- prescott_dx %>% 
+prescott_dx %>% 
   pivot_longer(cols = !(c("member_id","primary_dx_desc")),
                names_to = "ed_visit_type", "percent_of_clients") %>% 
   rename("flag"="value") %>% 
-  ggplot(mapping=aes(x="primary_dx_desc",
-                     y=flag)) +
-  geom_col()+
-  labs(y="Number of Clients",
-       x="Diagnosis")+
-  facet_wrap(~vars(ed_visit_type))
+  ggplot(mapping=aes(x = primary_dx_desc,
+                     y = flag,
+                     fill=primary_dx_desc)) +
+  geom_col() +
+  coord_flip()
+  #scale_color_brewer(palette = "Sequential") +
+  labs(x="Number of Clients", 
+       y="") +
+  facet_wrap(~ed_visit_type)

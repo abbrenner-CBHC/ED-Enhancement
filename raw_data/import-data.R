@@ -107,7 +107,7 @@ ed_person_summary_data >- ed_encounter_clean %>%
 prescott_dx <- prescott_march_wide %>% 
   select(member_id,primary_dx_desc, past_12_mo_5_9, past_12_mo_10_plus, past_month_ed_2_plus, bh_dm) %>%
   filter(primary_dx_desc %in% c("Reaction to severe stress, and adjustment disorders","Schizoaffective disorders","Unspecified psychosis not due to a substance or known physiological condition
-","Recurrent depressive disorder","Schizophrenia","Bipolar affective disorder") )
+","Recurrent depressive disorder","Schizophrenia","Bipolar affective disorder"))
 
 
 

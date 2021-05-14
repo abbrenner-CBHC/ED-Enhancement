@@ -10,11 +10,11 @@ library(lubridate)
 
 # Upload data -------------------------------------------------------------
 
-ed_encounter <- read_xlsx("raw_data/YTD_ED_Visits_Monthly_Report.xlsx",
-                         sheet="Data", col_names=TRUE) %>% 
+ed_encounter <- read_xlsx("raw_data/ytd-monthly-ed-05-01-2021.xlsx",
+                         sheet="ytd_ed_visits", col_names=TRUE) %>% 
                clean_names()
 
-ed_cbhc_tyd <- read_xlsx("raw_data/credible_for_ed_ytd_04_28_2020.xlsx",
+ed_cbhc_tyd <- read_xlsx("raw_data/credible_for_ed_ytd_05_10_2021.xlsx",
                          sheet="Data", col_names=TRUE) %>% 
               clean_names()
 
@@ -25,81 +25,97 @@ prescott_march_wide <- read_excel(path= "clean_data/ed-prescott-march-wide.xls",
   clean_names()
 
 
-# Basic data cleaning, emergency department encounters, YTD -----------------------------------------------------
+# Data cleaning, emergency department encounters, YTD -----------------------------------------------------
 
 
 ed_encounter_clean <- ed_encounter %>% 
   select(-c(first_name, last_name, date_of_birth, discharge_date)) %>% 
-  rename(id=member_id, past_month_visit_count=x1_month_ed_visit_count,
-         past_3_mo_visit_count=x3_month_ed_visit_count,
-         past_6_mo_visit_count=x6_month_ed_visit_count,
-         past_year_visit_count=x12_month_ed_visit_count) %>% 
-  mutate(bh_cohort=if_else(bh_and_diabetes=="BH and Diabetes", "1","0")) %>% 
-  mutate(ed_disparity_cohort=if_else(oregon_ed_disparity_measure=="Oregon ED Disparity Measure", "1","0")) %>% 
- # as.numeric(c("bh_cohort","ed_disparity_cohort")) %>% 
-  select(-c(oregon_ed_disparity_measure,bh_and_diabetes))
-  
-  
-  # Note: I am having trouble changing the bh_cohort and ed_disparity_cohort variable to numeric type
-
-
-
-
-# Basic data cleaning, CBHC client-level data, pulled April 2021 ----------
-  
-head(ed_cbhc_tyd)
-
-ed_cbhc_tyd_clean <- ed_cbhc_tyd %>% 
-  select(-c(last_name, other_admits_past_year, sex_assigned_at_birth,hepatitis_b_status, bmi:bp)) %>% 
-  rename(id=client_id) 
-
-  
-
-# More complex Data management ---------------------------------------------------------
-
-
-# Create a total count of daytime and after-hours ED admits.
-
-ed_encounter_dates<- ed_encounter_clean %>% 
-  mutate(admit_year =year(admit_date),
+      rename(id=member_id, past_month_visit_count=x1_month_ed_visit_count,
+           past_3_mo_visit_count=x3_month_ed_visit_count,
+           past_6_mo_visit_count=x6_month_ed_visit_count,
+           past_year_visit_count=x12_month_ed_visit_count) %>% 
+  mutate(bh_cohort = case_when(
+          bh_and_diabetes == "BH and Diabetes" ~ 1,
+          TRUE ~ 0)) %>% 
+  mutate(ed_disparity_cohort = case_when(
+          oregon_ed_disparity_measure == "Oregon ED Disparity Measure" ~ 1,
+          TRUE ~ 0)) %>% 
+  mutate(admit_year = year(admit_date),
          admit_month = month(admit_date),
-         admit_hour = hour(admit_date),
-         day_admit=ifelse(admit_hour>=8 & admit_hour<=16, 1, 0), 
-         after_hours_admit=ifelse(admit_hour>16, 1,0))
-
-
-       
-## NOTE: I can't get this count (creating a total per client) to work
-
-# Create count of ED admits for each person
-ed_encounter_dates %>% 
-  group_by(id) %>% 
-  add_count(day_admit, name = client_ed_visit_total)
-
+         admit_hour = hour(admit_date)) %>% 
+  mutate(day_admit = case_when(
+        admit_hour >=7 & admit_hour <= 18 ~ 1,
+        TRUE ~ 0),
+        night_admit = case_when(
+          admit_hour > 18 & admit_hour <= 24 ~ 1,
+          TRUE ~ 0),
+        early_morning_admit = case_when(
+          admit_hour >= 0 & admit_hour < 7 ~ 1,
+          TRUE ~ 0)
+        ) %>% 
+  # CREATE FLAGS FOR BH ED DISCHARGE DX AND PH ED DISCHARGE DX
+  mutate(bh_ed_dx = str_detect(diagnoses, "F[0-9]")) %>% 
+  mutate(bh_ed_dx = as.integer(bh_ed_dx)) %>% 
+  mutate(bh_ed_dx=case_when(
+    str_detect(diagnoses, c("[Ss]uicide","[Ss][Ii]")) ~ 1,
+    TRUE ~ 0)) %>% 
+  mutate(ph_ed_dx = case_when(
+    bh_ed_dx==0 ~ 1,
+    TRUE ~ 0
+  )) %>% 
 # Create high utilization categories
-ed_encounter_dates <- ed_encounter_dates %>% 
   group_by(id) %>% 
-  mutate(ed_past_yr_5_to_9 = ifelse(past_year_visit_count>4 & past_year_visit_count<10, 1, 0),
+     mutate(ed_past_yr_5_to_9 = ifelse(past_year_visit_count>4 & past_year_visit_count<10, 1, 0),
          ed_past_yr_10_plus = ifelse(past_year_visit_count>=10, 1, 0),
          ed_past_mo_2_plus = ifelse(past_month_visit_count>1, 1, 0)) %>% 
-  #select(id,past_year_visit_count,past_month_visit_count,ed_past_yr_5_to_9,ed_past_yr_10_plus,ed_past_mo_2_plus) %>% 
+  ungroup() 
+
+visit_type <- ed_encounter_clean %>% 
+  group_by(id) %>% 
+  summarise(total_bh_visits = sum(bh_ed_dx),  
+            total_ph_visits = sum(ph_ed_dx)) %>% 
   ungroup()
 
-# Create more meaningful Dx variables
+ed_encounter_clean_2 <- ed_encounter_clean %>% 
+  left_join(visit_type, by="id") %>% 
+  
+ed_encounter_clean_2 %>% 
+  arrange(id) %>% 
+# create person-level variable to represent percent of their total visits ytd that were
+# for a bh concern
+   mutate(pct_bh_ed_visits = (total_bh_visits/(total_bh_visits + total_ph_visits))*100) %>% 
+      select(c(id,bh_ed_dx,ph_ed_dx,total_bh_visits,total_ph_visits,pct_bh_ed_visits))
 
-ed_encounter_dates <- ed_encounter_dates %>% 
-  separate_rows(diagnoses, sep=";") %>% 
+
+### Basic data cleaning, CBHC client-level data, pulled May 1, 2021
+
+ed_cbhc_ytd_clean <- ed_cbhc_tyd %>% 
+  select(-c(last_name, client_status_date, all_dx_icd, other_admits_past_year, sex_assigned_at_birth, est_mnthly_grs_hshld_incm, hepatitis_b_status, bmi:bp)) %>% 
+  rename(id=client_id) 
+
+ed_cbhc_ytd_clean <- ed_cbhc_ytd_clean %>% 
+  arrange(primary_prog) %>% 
+  filter(primary_prog !="Intake"|primary_prog !="Crisis"| primary_prog !="Gambling"|primary_prog!="NonMOTS"|primary_prog!="Respite"|primary_prog!="Turning Point"|!is.na(primary_prog))
+
+# Output clean datasets ---------------------------------------------------
+
+
+# CREATE FINAL ED ENCOUNTER DATASET
+ed_ytd_05_01_2021_long <- ed_encounter_clean_2 %>% 
+    select(-(c(oregon_ed_disparity_measure,bh_and_diabetes,admit_year)))
+
+write_rds(ed_ytd_05_01_2021_long,
+          file = "clean_data/ed_ytd_05_01_2021_long")
+  
   
 
+
+
+  
+
+
   
   
-  ## Still need to create some variables: ph_dx, bh_dx, key_dx_codes, 
-
-
-# Create a dataset for person-level ED summary data
-
-ed_person_summary_data >- ed_encounter_clean %>% 
-  select()
 
 
 ## PRESCOTT - PLOTTING

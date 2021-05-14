@@ -23,26 +23,31 @@ library(yaml)
 library(lubridate)
 library(hrbrthemes)
 library(readxl)
+library(gt)
+library(ragg)
+library(systemfonts)
 ```
 
 ```{r, include=FALSE}
 ## Import Collective Medical Data from 2020
-ed_2020 <- read_csv("raw_data/ED_visits_2020.csv") %>% 
-    clean_names()
+#ed_2020 <- read_csv("raw_data/ED_visits_2020.csv") %>% 
+#    clean_names()
+
+ytd_ed_visits_05_01_2021 <- read_rds("clean_data/ed_ytd_05_01_2021_long")
 ```
 
 
 
 ```{r,include=FALSE}
 # Drop identifiers
-ed_2020_hippa <- 
-  ed_2020 %>% 
-  select(-first_name, -last_name, -date_of_birth)
+#ed_2020_hippa <- 
+  #ed_2020 %>% 
+  #select(-first_name, -last_name, -date_of_birth)
 ```
 
 <center>
 ## **CCBHC-E ED Cascadia Report**
-### **February, 2021**
+### **Aprill, 2021**
 
 ***
 <style>
@@ -62,29 +67,44 @@ Data from Collective Medical were combined with Cascadia EHR data to determine i
 ### ...in the variable "ed_visit_total"
 
 ```{r}
-ed_visit_total <- ed_2020_hippa %>% 
+ed_visit_total <- ytd_ed_visits_05_01_2021 %>% 
   summarise(ed_visit_total = n()) %>% 
   pull(ed_visit_total)
 ```
-There were `r ed_visit_total` total ED visits for CBH clients in 2020.
+There were `r ed_visit_total` total ED visits for CBH clients in 2021 through May 1.
 
 #### Examine encounters by client
 
 ```{r}
-ed_2020_hippa %>% 
-  group_by(member_id) %>% 
-  summarise(ed_visit_total = n()) %>% 
-  summarise(mean_ed_visits_per_client = mean(ed_visit_total)) %>% 
-  pull(mean_ed_visits_per_client)
-```
-On average, clients visited the ED `r mean_ed_visits_per_client` times in 2020.
 
-#### Examine encounters by visit facility
+ytd_count <- ytd_ed_visits_05_01_2021 %>% 
+   group_by(id) %>% 
+  summarise(ytd_ed_visit_total = n())
+            
+            
+ytd_ed_visits_summary <- ytd_ed_visits_05_01_2021 %>% 
+  summarise(mean_past_yr_visits_per_client = mean(past_year_visit_count),
+            mean_past_mo_visits_per_client = mean(past_month_visit_count),
+            mean_bh_visits_per_client = mean(total_bh_visits),
+            mean_ph_visits_per_client = mean(total_ph_visits))
+```
+On average, clients visited the ED `r mean_ed_visits_per_client` times in the past 12 months, and `r mean_past_mo_visits_per_client` times in the past month.
+
+Of these visits, an average of `r mean_bh_visits_per_client` were for behavioral health concerns compared to `r mean_ph_visits_per_client` for physical health concerns.
+
+
+####  Most commonly visited hospitals include Providence Portland Medical Center, Legacy Emanuel, Adventist Health Portland, Unity, and Legacy Good Samaritan
 
 ```{r}
-ed_2020_hippa %>% 
+ytd_ed_visits_05_01_2021 %>% 
   count(visit_facility) %>% 
-  arrange(desc(n))
+  arrange(desc(n)) %>% 
+  gt(rowname_col="visit_facility") %>% 
+    cols_label(n = "Number of ED Encounters") %>% 
+    tab_header(
+      title="Where Clients Go for Emergency Support",
+      subtitle= "Year to Date, 2021"
+    ) 
 ```
 
 
@@ -95,9 +115,9 @@ ed_2020_hippa %>%
 
 ```{r}
 # First, create a month and year variable using lubridate package
-ed_visits_by_month <- ed_2020_hippa %>% 
+ed_visits_by_month <- ytd_ed_visits_05_01_2021 %>% 
   select(admit_date) %>% 
-  mutate(admit_date = mdy_hm(admit_date)) %>% 
+  #mutate(admit_date = mdy_hm(admit_date)) %>% 
   mutate(month = month(admit_date, label = TRUE, abbr = TRUE)) %>% 
   mutate(year = year(admit_date)) %>% 
   select(-admit_date) %>% 
@@ -108,28 +128,23 @@ ed_visits_by_month <- ed_2020_hippa %>%
 ggplot(data=ed_visits_by_month,
         mapping=aes(x=month, y=n)) +
   scale_x_discrete() +
-  scale_y_continuous("ED Visits",limits=c(0,900),
-                     breaks = seq(0,900, by=100))+
-  geom_col()
+  scale_y_continuous("ED Visits",limits=c(0,1000),
+                     breaks = seq(0,1000, by=200))+
+  geom_col(fill="purple") +
+  labs(title="ED Encounters for Cascadia Clients",
+       subtitle = "2021 Year to Date") +
+  geom_text(data=ed_visits_by_month,
+            aes(label = n),
+            vjust=1.1) +
+  theme_minimal(base_family = "Ebrima") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+ 
 ```
 
-```{r}
-# This code improves the quality of the column graph above
-ggplot(data=ed_visits_by_month,
-        mapping=aes(x=month, y=n, fill=year)) +
-  scale_x_discrete() +
-  scale_y_continuous(limits=c(0,900),
-                     breaks = seq(0,900, by=100))+
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~year) + 
-  geom_text(aes(label= n),
-            vjust=-1)+
-  labs(title="Total Emergency Department Encounters, 2020 to Date",
-       subtitle = "CBH Clients",
-       x="Month",
-       y="ED Visit Count") +
-  theme_ipsum_es()
-```
 
 
 

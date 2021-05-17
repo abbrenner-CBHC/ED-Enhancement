@@ -8,6 +8,14 @@ library(dplyr)
 ed_2020 <- read_csv("raw_data/ED_visits_2020.csv") %>% 
   clean_names()
 
+ed_2020 %>% 
+  mutate(visit=1) %>% 
+  mutate(admit_date = mdy_hm(admit_date)) %>% 
+  mutate(month = month(admit_date, label = TRUE, abbr = FALSE)) %>% 
+  group_by(month) %>% 
+  count(visit) %>% 
+  pull(month)
+
 ## Drop identifying information
 ed_2020.hippa <- 
   ed_2020 %>% 
@@ -17,6 +25,8 @@ ed_2020.hippa <-
 
 ed_2020_long <- ed_2020.hippa %>% 
   mutate(visit=1)
+
+
 
 ed_2020_long_2 <- ed_2020_long %>% 
   separate(col=admit_date,

@@ -1,0 +1,356 @@
+---
+title: "Monthly ED Utilization Report"
+author: "Allison Brenner"
+date: "5/27/2021"
+output: 
+  pagedown::html_paged
+    
+      
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, include = TRUE, warning=FALSE, error = FALSE )
+```
+
+
+
+```{r, include=FALSE}
+library(janitor)
+library(tidyverse)
+library(usethis)
+library(yaml)
+library(lubridate)
+library(hrbrthemes)
+library(readxl)
+library(gt)
+library(ragg)
+library(systemfonts)
+library(remedy)
+```
+
+```{r, include=FALSE}
+## Import Collective Medical Data from 2020
+#ed_2020 <- read_csv("raw_data/ED_visits_2020.csv") %>% 
+#    clean_names()
+
+ytd_ed_visits_05_01_2021 <- read_rds("clean_data/ed_client_ytd_05_01_2021_long")
+visit_type_by_month <- read_rds("clean_data/visit_type_by_month")
+primary_dx_counts <- read_rds("clean_data/primary_dx_counts")
+
+
+
+# Including Cascadia branded colors
+cbhc_branded_colors <- list(
+  "blue_1"   = "#006699",
+  "green"  = "#669933",
+  "blue_2" = "#0099CD",
+  "charcoal"= "#333333",
+  "gray"   = "#999999", 
+  "orange" = "#FF9933"
+)
+```
+
+
+![](https://cascadiabhc.sharepoint.com/_api/v2.1/sites/cascadiabhc.sharepoint.com,5b9c4a12-29a2-4270-bb60-847e9d938b3a,fb487e2d-f30f-4acb-b71d-f32d285139c0/lists/48D216F0-D136-4E3E-8F36-B33EC0218B71/items/5be17077-3c85-4424-a4ff-bef9adba4654/driveItem/thumbnails/0/c400x99999/content?preferNoRedirect=true&prefer=extendCacheMaxAge&clientType=modernWebPart)
+<center>
+# **Cascadia Emergency Department Quarterly Report**
+## **April, 2021**
+
+>Every small change adds up to reduce avoidable emergency department (ED) visits among our clients.> 
+ 
+***
+<style>
+div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
+</style>
+<div class = "blue">
+
+<center>
+Data from Collective Medical were combined with Cascadia EHR data to determine information on emergency department (ED) utilization from Jan-April, 2021. Information presented includes Cascadia clients with an ROI for Collective Medical, who utilized the ED at least once in the past 12 months.  
+</div>
+
+
+
+## Change in Emergency Department Utilization Over Time
+
+
+```{r, include=FALSE}
+# First, create a month and year variable using lubridate package
+ed_visits_by_month <- ytd_ed_visits_05_01_2021 %>% 
+  select(admit_date) %>% 
+  mutate(month = month(admit_date, label = TRUE, abbr = TRUE)) %>% 
+  mutate(year = year(admit_date)) %>% 
+  add_count(year, month) %>% 
+  drop_na(admit_date) %>% 
+  mutate(
+    ed_visit = case_when(!is.na(admit_date) ~ 1,
+                         TRUE ~0)
+  )
+```
+
+```{r}
+ed_visits_by_month %>% 
+  select(-c(admit_date)) %>% 
+  distinct() %>% 
+  ggplot(mapping=aes(x=month, y=n)) +
+  scale_x_discrete() +
+  scale_y_continuous("ED Visits",limits=c(0,1000),
+                     breaks = seq(0,1000, by=200))+
+  geom_col(fill="purple") +
+  labs(title="Emergency Department Visits Are Increasing \n
+       Among Cascadia Clients in Early 2021") +
+  geom_text(aes(label = n),
+            vjust=1.1) +
+  theme_minimal(base_family = "Ebrima") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(), 
+        plot.title = element_text(lineheight = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+ 
+```
+
+
+```{r}
+# Generate summary ED visits by program
+
+ytd_ed_visits_05_01_2021 %>% 
+  mutate(month = month(admit_date, label = TRUE, abbr = TRUE)) %>% 
+  mutate(year = year(admit_date)) %>% 
+  add_count(year, month) %>% 
+  drop_na(admit_date) %>% 
+  group_by(month, primary_prog) %>% 
+  summarise(total_ed_visits =n()) %>% 
+ggplot(mapping=aes(x=month, 
+                   y=total_ed_visits, 
+                   group=primary_prog,
+                   color=primary_prog)) +
+  geom_line() +
+  scale_y_continuous("ED Visits",limits=c(0,500),
+                     breaks = seq(0,500, by=100)) +
+  labs(title="Emergency Department Visit Trends Vary by Program in Early 2021") +
+  theme_minimal(base_family = "Ebrima") +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_text(),
+        axis.ticks = element_blank(), 
+        plot.title = element_text(lineheight = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+
+```
+
+
+```{r, include=FALSE}
+
+#### Generate totals of ED visits in past year, past month, and YTD to use in in-line code
+
+ytd_ed_visit_total <- ytd_ed_visits_05_01_2021 %>% 
+  summarise(ed_visit_total = n()) %>% 
+  pull(ed_visit_total)
+
+ytd_ed_visit_total
+
+past_12_mo_ed_visit_total <- ytd_ed_visits_05_01_2021 %>% 
+  select(id, past_year_visit_count) %>% 
+  distinct() %>% 
+  summarise(count_past_year_ed_visits = sum(past_year_visit_count)) %>% 
+  pull(count_past_year_ed_visits)
+
+past_12_mo_ed_visit_total
+
+past_month_visit_total <- ytd_ed_visits_05_01_2021 %>% 
+  select(id, past_month_visit_count) %>% 
+  summarise(past_month_ed_visit_total = sum(past_month_visit_count)) %>% 
+  pull(past_month_ed_visit_total)
+
+past_month_visit_total
+
+```
+#### There were `r ytd_ed_visit_total` total ED visits for CBH clients in 2021 through May 1.
+
+#### Examine monthly and yearly visit averages per client
+
+```{r, include=FALSE}
+ave_past_year_visit_per_client <- ytd_ed_visits_05_01_2021 %>% 
+  select(id, past_year_visit_count) %>% 
+  distinct() %>% 
+  summarise(mean_past_yr_visits_per_client = mean(past_year_visit_count)) %>% 
+  pull(mean_past_yr_visits_per_client)
+  
+ave_past_year_visit_per_client
+
+
+ave_past_year_visit_per_client_with_visits <- ytd_ed_visits_05_01_2021 %>% 
+  select(id, past_month_visit_count, past_year_visit_count) %>% 
+  filter(past_month_visit_count>0) %>% 
+  select(-past_month_visit_count) %>% 
+   distinct() %>%
+  summarise(past_yr_ave_past_mo_visits = mean(past_year_visit_count)) %>% 
+  pull(past_yr_ave_past_mo_visits)
+  
+ave_past_year_visit_per_client_with_visits
+
+
+ave_past_month_visit_per_client <- ytd_ed_visits_05_01_2021 %>% 
+  select(id, past_month_visit_count) %>% 
+  distinct() %>% 
+  summarise(mean_past_mo_visits_per_client = mean(past_month_visit_count)) %>% 
+  pull(mean_past_mo_visits_per_client)
+  
+ave_past_month_visit_per_client 
+```
+
+```{r}
+# Graph types of visits by month
+visit_by_type_program <- ytd_ed_visits_05_01_2021 %>% 
+  mutate(month = month(admit_date, label = TRUE, abbr = TRUE)) %>% 
+  mutate(year = year(admit_date)) %>% 
+  select(id, month, bh_ed_dx, ph_ed_dx, primary_prog) %>% 
+  group_by(month, primary_prog) %>% 
+  summarise(total_bh_visits_per_month = sum(bh_ed_dx),  
+            total_ph_visits_per_month = sum(ph_ed_dx)) %>% 
+  drop_na(month) %>% 
+  filter(month !="May") %>% 
+  ungroup() 
+
+### NEED TO WORK ON THIS
+
+# By program
+visit_by_type_program %>% 
+    ggplot(mapping=aes(x=month, 
+                     y=total_bh_visits_per_month,
+                     group_by(primary_prog),
+                     fill=primary_prog)) +
+  geom_col() +
+  
+  scale_x_discrete() +
+  scale_color_manual(values = c("#006699","#669933", "#0099CD","#333333","#999999","#FF9933"),
+                     aesthetics = c("color", "fill")) +
+  scale_y_continuous(labels = NULL) +
+  labs(y ="Number of ED Visits") +
+  labs(title="Behavioral Health Emergency Department Visits Are Increasing \n
+       Slightly Among Cascadia Clients in Early 2021") +
+  geom_text(aes(label = total_bh_visits_per_month),
+            vjust=1.1,
+            size=3) +
+  #geom_label(label.size = 0.25) +
+  facet_grid(primary_prog ~.,
+             scales = "free") +
+  theme_minimal(base_family = "Ebrima") +
+  theme(strip.text.x = element_blank(),
+        strip.text.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(), 
+        plot.title = element_text(lineheight = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.title = element_blank())
+
+
+# By program
+visit_by_type_program %>% 
+    ggplot(mapping=aes(x=month, 
+                     y=total_ph_visits_per_month,
+                     group_by(primary_prog),
+                     fill=primary_prog)) +
+  geom_col() +
+  
+  scale_x_discrete() +
+  scale_color_manual(values = c("#006699","#669933", "#0099CD","#333333","#999999","#FF9933"),
+                     aesthetics = c("color", "fill")) +
+  scale_y_continuous(labels = NULL) +
+  labs(y ="Number of ED Visits") +
+  labs(title="Physical Health Emergency Department Trends Are \n
+       Less Clear in Early 2021") +
+  geom_text(aes(label = total_ph_visits_per_month),
+            vjust=1.1,
+            size=3) +
+  #geom_label(label.size = 0.25) +
+  facet_grid(primary_prog ~.,
+             scales = "free") +
+  theme_minimal(base_family = "Ebrima") +
+  theme(strip.text.x = element_blank(),
+        strip.text.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(), 
+        plot.title = element_text(lineheight = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.title = element_blank())
+
+
+# For all Cascadia clients
+visit_types_by_month <- ytd_ed_visits_05_01_2021 %>% 
+  mutate(month = month(admit_date, label = TRUE, abbr = TRUE)) %>% 
+  mutate(year = year(admit_date)) %>% 
+  select(id, month, bh_ed_dx, ph_ed_dx, primary_prog) %>% 
+  mutate(visit_type = 
+           case_when(bh_ed_dx==1 ~ "Behavioral",
+                     ph_ed_dx==1 ~ "Physical")) %>% 
+  drop_na(month) %>% 
+  group_by(month, visit_type) %>%
+  add_count() %>% 
+  distinct(month, primary_prog, n, visit_type) 
+
+
+
+visit_types_by_month %>% 
+    ggplot(mapping=aes(x=month, 
+                     y=n,
+                     fill = visit_type)) +
+  geom_col(aes(fill = factor(visit_type))) +
+  scale_fill_manual(values = c("#006699","#669933")) +
+  scale_x_discrete() +
+  scale_y_continuous("ED Visits",limits=c(0,700),
+                     breaks = seq(0,700, by=100)) 
+  
+           
+```
+
+,
+           
+
+
+```
+On average, clients visited the ED `r mean_past_yr_visits_per_client` times in the past 12 months, and `r mean_past_mo_visits_per_client` times in the past month.
+
+Of these visits, an average of `r mean_bh_visits_per_client` were for behavioral health concerns compared to `r mean_ph_visits_per_client` for physical health concerns.
+
+
+####  Most commonly visited hospitals include Providence Portland Medical Center, Legacy Emanuel, Adventist Health Portland, Unity, and Legacy Good Samaritan
+
+```{r}
+ytd_ed_visits_05_01_2021 %>% 
+  select(visit_facility) %>% 
+  #mutate(month = month(admit_date, label = TRUE, abbr = TRUE)) %>% 
+  #select(-admit_date) %>% 
+  add_count(visit_facility) %>% 
+  drop_na() %>%
+  arrange(desc(n)) %>% 
+  distinct() %>% 
+  slice_max(n, n=10) %>% 
+  gt(rowname_col="visit_facility") %>% 
+    cols_label(n = "Number of ED Encounters") %>% 
+    tab_header(
+      title="Where Clients Go for Emergency Support",
+      subtitle= "Year to Date, 2021") %>% 
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_title("title")) %>% 
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_title("subtitle")) %>%
+```
+
+
+
+
+For more information about these data, or for questions or comments please contact the [Population Health team](https://cascadiabhc.sharepoint.com/sites/InsideCascadia/SitePages/PopulationHealth.aspx)
+
+
+
+
+
+

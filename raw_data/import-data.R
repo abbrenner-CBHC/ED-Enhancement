@@ -5,36 +5,30 @@ library(tidyverse)
 library(janitor)
 library(readxl)
 library(lubridate)
+library(icd.data)
+library(ICD10gm)
 
 
 
 # Upload data -------------------------------------------------------------
 
-ed_encounter <- read_xlsx("raw_data/ytd-monthly-ed-05-01-2021.xlsx",
-                         sheet="ytd_ed_visits", col_names=TRUE) %>% 
+ed_encounter <- read_xlsx("raw_data/ytd-monthly-ed-06-01-2021.xlsx",
+                         sheet="ytd_ed_visits",
+                         col_names=TRUE) %>% 
                clean_names()
 
 ed_cbhc_tyd <- read_xlsx("raw_data/credible_for_ed_ytd_05_10_2021.xlsx",
-                         sheet="Data", col_names=TRUE) %>% 
+                         sheet="Data", 
+                         col_names=TRUE) %>% 
               clean_names()
 
 
-prescott_march_wide <- read_excel(path= "clean_data/ed-prescott-march-wide.xls",
-                                  sheet="Sheet1",
-                                  col_names = TRUE) %>% 
-  clean_names()
 
 
 # Data cleaning, emergency department encounters, YTD -----------------------------------------------------
 
-
-ed_encounter %>% 
-  select(bh_and_diabetes, oregon_ed_disparity_measure) %>% 
-  mutate(bh_cohort = case_when(bh_and_diabetes == "BH and Diabetes" ~ TRUE,
-                               TRUE ~ FALSE))
-
-
 ed_encounter_clean <- ed_encounter %>% 
+  arrange(by_group = admit_date) %>% 
   select(-c(first_name, last_name, date_of_birth, discharge_date)) %>% 
       rename(id=member_id, past_month_visit_count=x1_month_ed_visit_count,
            past_3_mo_visit_count=x3_month_ed_visit_count,
@@ -76,95 +70,170 @@ ed_encounter_clean <- ed_encounter %>%
          ed_past_mo_2_plus = ifelse(past_month_visit_count>1, 1, 0)) %>% 
   ungroup() 
 
-  
-  
 
-
-  # Note: I am having trouble changing the bh_cohort and ed_disparity_cohort variable to numeric type
-
-
-
-visit_type <- ed_encounter_clean %>% 
+# Generate a total of behavioral health and physical health visits  per person
+visit_type_by_id <- ed_encounter_clean %>% 
   group_by(id) %>% 
-  summarise(total_bh_visits = sum(bh_ed_dx),  
-            total_ph_visits = sum(ph_ed_dx)) %>% 
+  summarise(total_bh_visits_per_person = sum(bh_ed_dx),  
+            total_ph_visits_per_person = sum(ph_ed_dx)) %>% 
   ungroup()
 
+
 ed_encounter_clean_2 <- ed_encounter_clean %>% 
-  left_join(visit_type, by="id") %>% 
-  
-ed_encounter_clean_2 %>% 
+  left_join(visit_type_by_id, by="id") %>%
   arrange(id) %>% 
 # create person-level variable to represent percent of their total visits ytd that were
 # for a bh concern
-   mutate(pct_bh_ed_visits = (total_bh_visits/(total_bh_visits + total_ph_visits))*100) %>% 
-      select(c(id,bh_ed_dx,ph_ed_dx,total_bh_visits,total_ph_visits,pct_bh_ed_visits))
+   mutate(pct_bh_ed_visits = (total_bh_visits_per_person/(total_bh_visits_per_person + total_ph_visits_per_person))*100) %>% 
+      select(-c(oregon_ed_disparity_measure, bh_and_diabetes, admit_year))
 
 
-### Basic data cleaning, CBHC client-level data, pulled May 1, 2021
+# Generate a total of behavioral health and physical health visits  per month
+visit_type_by_month <- ed_encounter_clean %>% 
+  group_by(admit_month) %>% 
+  summarise(total_bh_visits_per_month = sum(bh_ed_dx),  
+            total_ph_visits_per_month = sum(ph_ed_dx)) %>% 
+  ungroup()
 
-ed_cbhc_ytd_clean <- ed_cbhc_tyd %>% 
+
+
+# Merging with client-level data ------------------------------------------
+ed_encounter_by_client <- ed_encounter_clean_2 %>% 
+  full_join(ed_cbhc_tyd, by=c("id"="client_id"))  
+# Perform a full join to keep all rows. Assume that clients in active
+# client list from CBHC are those with zero past year ED visits in CM
+
+
+# Data cleaning and management of full data file --------------------------
+
+ed_encounter_by_client <- ed_encounter_by_client %>% 
   select(-c(last_name, client_status_date, all_dx_icd, other_admits_past_year, sex_assigned_at_birth, est_mnthly_grs_hshld_incm, hepatitis_b_status, bmi:bp)) %>% 
-  rename(id=client_id) 
-
-ed_cbhc_ytd_clean <- ed_cbhc_ytd_clean %>% 
+  mutate(
+    past_year_visit_count = case_when(
+    is.na(past_year_visit_count) ~ 0,
+    TRUE ~ past_year_visit_count),
+  past_month_visit_count = case_when(
+    is.na(past_month_visit_count) ~ 0,
+   TRUE ~ past_month_visit_count),
+  past_6_mo_visit_count = case_when(
+   is.na(past_6_mo_visit_count) ~ 0,
+   TRUE ~ past_6_mo_visit_count),
+  past_3_mo_visit_count = case_when(
+    is.na(past_3_mo_visit_count) ~ 0,
+    TRUE ~ past_3_mo_visit_count)) %>% 
   arrange(primary_prog) %>% 
-  filter(primary_prog !="Intake"|primary_prog !="Crisis"| primary_prog !="Gambling"|primary_prog!="NonMOTS"|primary_prog!="Respite"|primary_prog!="Turning Point"|!is.na(primary_prog))
+  filter(primary_prog == "ACT"|primary_prog == "Mental Health Outpatient"| primary_prog== "Mental Health Community Solutions"| primary_prog== "Mental Health Residential Srv"|primary_prog== "PSRB Treatment"|primary_prog== "Residential Facility"|primary_prog== "SUD") %>% 
+  mutate(primary_prog = case_when(
+    primary_prog == "Mental Health Residential Srv" ~ "Residential",
+    primary_prog == "Residential Facility" ~ "Residential",
+    TRUE ~ primary_prog)) %>% 
+  mutate(
+    fact = case_when(
+      primary_prog == "ACT" & str_detect(geo_desc,"Forensic") ~ 1,
+      TRUE ~ 0),
+    act_not_fact = case_when(
+      primary_prog == "ACT" & fact!=1 ~ 1,
+      TRUE ~ 0),
+    icm = case_when(
+      str_detect(geo_desc,"Intensive") ~ 1,
+      TRUE ~ 0),
+    comm_sol_hc = case_when(
+      primary_prog == "Mental Health Community Solutions" & (str_detect(geo_desc, "Clinic")) ~ 1,
+      TRUE ~ 0),
+    comm_sol_comm = case_when(
+      primary_prog == "Mental Health Community Solutions" & comm_sol_hc !=1 ~ 1,
+      TRUE ~ 0),
+    pc = case_when(
+      !is.na(epic_id) ~ 1,
+      TRUE ~ 0),
+    older_adults = case_when(
+      str_detect(geo_desc, "Older") ~ 1,
+      TRUE ~ 0),
+    child_fam = case_when(
+      str_detect(geo_desc, "Child") ~ 1,
+      TRUE ~ 0),
+    prescott = case_when(
+      str_detect(geo_desc, "Prescott") ~ 1,
+      TRUE ~ 0),
+    davids_harp = case_when(
+      str_detect(geo_desc, "Harp") ~ 1,
+      TRUE ~ 0),
+    employment = case_when(
+      str_detect(geo_desc, "Employment") ~ 1,
+      TRUE ~ 0),
+    hot = case_when(
+      str_detect(geo_desc, "Housing|HUD|HOT|RADCREW|OTIS|Palm|JOIN|PSH") ~ 1,
+      TRUE ~ 0),
+    sot = case_when(
+      str_detect(geo_desc, "Street|ISEP|PATH") ~ 1,
+      TRUE ~ 0),
+    justice = case_when(
+      str_detect(geo_desc, "Justice|Second") ~ 1,
+      TRUE ~ 0)) 
 
+
+ed_encounter_by_client_recoded <- ed_encounter_by_client %>%
+  mutate(
+    homeless = case_when(
+      living_arrangement == "Transient/Homeless" ~ 1,
+      TRUE ~ 0),
+    gender_simple = case_when(
+      gender=="Male" ~ "male",
+      gender=="Female" ~ "female",
+      gender=="Transgender Female/Male-to-Female" ~ "trans_female",
+      gender=="Transgender Male/Female-to-Male" ~ "trans_male",
+      is.na(gender) ~ "missing",
+      TRUE ~ "other_non_binary_gender"),
+    sexual_orien_simple = case_when(
+      sexual_orientation == "Straight"|sexual_orientation == "Straight/heterosexual" ~ "straight",
+      sexual_orientation == "Chose not to disclose"| sexual_orientation == "Don''t know" ~ "missing_unknown",
+      is.na(sexual_orientation) ~ "missing_unknown",
+      TRUE ~ "not_straight"),
+    eng_speaking = case_when(
+      pref_language == "English" ~ "english",
+      is.na(pref_language) ~ "missing",
+      TRUE ~ "non_english"),
+    mh_loc_simple = case_when(
+            str_detect(mh_loc, "Level A") ~ "level_a",
+            str_detect(mh_loc, "Level B Adult Outpatient|Level B Child and Family") ~ "level_b",
+            str_detect(mh_loc, "Level B Adult SPMI") ~ "level_b_spmi",
+            str_detect(mh_loc, "Level C Adult SPMI") ~ "level_c_spmi",
+            str_detect(mh_loc, "Level C Adult Outpatient|Level C Child and Family") ~ "level_c",
+            str_detect(mh_loc, "Level D") ~ "level_d",
+            is.na(mh_loc) ~ "missing"),
+    tobacco_user = case_when(
+      tobacco == "YES" ~ "tobacco_user",
+      is.na(tobacco) ~ "missing",
+      TRUE ~ "never_former_tobacco_user")
+    )
+    
+    
+# GENERATE LIST OF TOP 10 PRIMARY DX
+primary_dx <- ed_encounter_by_client_recoded %>% 
+  select(id, primary_dx) %>%
+  distinct() %>% 
+  add_count(primary_dx) %>%
+  distinct(primary_dx, .keep_all=TRUE) %>% 
+  arrange(desc(by_group=n))
+
+  
+  
+  
 # Output clean datasets ---------------------------------------------------
 
 
 # CREATE FINAL ED ENCOUNTER DATASET
-ed_ytd_05_01_2021_long <- ed_encounter_clean_2 %>% 
-    select(-(c(oregon_ed_disparity_measure,bh_and_diabetes,admit_year)))
 
-
-write_rds(ed_ytd_05_01_2021_long,
-          file = "clean_data/ed_ytd_05_01_2021_long")
+write_rds(ed_encounter_by_client_recoded,
+          file = "clean_data/ed_client_ytd_06_01_2021_long")
   
-  
+write_rds(primary_dx,
+          file = "clean_data/primary_dx_counts")
 
-# Create count of ED admits for each person
-ed_encounter_dates %>% 
-  select(id, day_admit) %>% 
-  group_by(id) %>% 
-  add_count(day_admit, name = "total_per_client")
-  
-
-
-# This was in your updated file, but client_ed_visit_total doesn't appear
-# elsewhere in your script 
-  # add_count(day_admit, name = client_ed_visit_total)
-
-ed_encounter_dates <- ed_encounter_dates %>% 
-  separate_rows(diagnoses, sep=";")
-
-  
-
-
-  
-  
-
-
-## PRESCOTT - PLOTTING
-
-prescott_dx <- prescott_march_wide %>% 
-  select(member_id,primary_dx_desc, past_12_mo_5_9, past_12_mo_10_plus, past_month_ed_2_plus, bh_dm) %>%
-  filter(primary_dx_desc %in% c("Reaction to severe stress, and adjustment disorders","Schizoaffective disorders","Unspecified psychosis not due to a substance or known physiological condition
-","Recurrent depressive disorder","Schizophrenia","Bipolar affective disorder"))
+write_rds(visit_type_by_month,
+          file = "clean_data/visit_type_by_month")
 
 
 
-prescott_dx %>% 
-  pivot_longer(cols = !(c("member_id","primary_dx_desc")),
-               names_to = "ed_visit_type", "percent_of_clients") %>% 
-  rename("flag"="value") %>% 
-  ggplot(mapping=aes(x = primary_dx_desc,
-                     y = flag,
-                     fill=primary_dx_desc)) +
-  geom_col() +
-  coord_flip()
-  #scale_color_brewer(palette = "Sequential") +
-  labs(x="Number of Clients", 
-       y="") +
-  facet_wrap(~ed_visit_type)
+
+
